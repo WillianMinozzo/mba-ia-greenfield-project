@@ -37,6 +37,11 @@ describe('Database migrations (integration)', () => {
       ),
       dataSource.query(`DROP TABLE IF EXISTS "migrations" CASCADE`),
     ]);
+    // Enum types outlive DROP TABLE; leftovers from synchronize-based suites or a
+    // prior migration:run make CreateAuthTokens fail with "type already exists".
+    await dataSource.query(
+      `DROP TYPE IF EXISTS "verification_tokens_type_enum" CASCADE`,
+    );
   });
 
   afterAll(async () => {

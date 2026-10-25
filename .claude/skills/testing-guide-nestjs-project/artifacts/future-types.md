@@ -50,28 +50,41 @@ describe('UserRegisteredHandler', () => {
 
 ## Queue Consumers / Processors
 
-When the project adds queue processing (e.g., BullMQ for video transcoding):
+BullMQ processors (`@Processor(...)` extending `WorkerHost`) run only in the `video-worker` process (`WorkerModule`); the API registers queues without processors. Reference implementation: `src/video-processing/video-processing.processor.ts`.
 
 **What to test:**
-- Processor correctly handles job data
-- Error handling — failed jobs are retried or moved to dead letter queue
-- Side effects (DB updates, storage writes) occur as expected
+- `process(job)` produces the side effects against real systems — DB row updated, objects written to MinIO — for a valid input
+- Idempotency — a redelivered or stale job (video missing / no longer in the expected status) is a no-op
+- Error classification — permanent errors become `UnrecoverableError` (no retry); transient errors propagate so the queue's `attempts`/`backoff` retries them
+- The `@OnWorkerEvent('failed')` handler persists the final failure only on the last attempt **or** on `UnrecoverableError`, never on an intermediate attempt, and logs (does not throw) when persisting fails
 
 **Layer assignment:**
-- **Processor with business logic**: Unit (mock deps) + Integration (real DB/storage)
-- **Processor with only external system calls**: Integration (real systems)
+- **`process(job)`**: Integration — real Postgres + MinIO + FFmpeg, called directly with a minimal `{ data }` job (do not wait for a background worker to pick it up)
+- **`failed` handler / error classification**: Unit — fake `job` with `attemptsMade` / `opts.attempts`, mocked repository
+- **Reconcilers / re-enqueue on boot**: Integration — real Postgres + Redis with a unique BullMQ `prefix`
+- **Worker root module**: Unit compilation test (`compile()` without `init()`, so no worker starts consuming)
 
-**Setup pattern:**
+**`UnrecoverableError` vs retry:**
 ```typescript
-// Test the process method directly
-describe('VideoProcessorConsumer', () => {
-  it('should update video status after processing', async () => {
-    const job = { data: { videoId: 'v1', filePath: '/tmp/video.mp4' } } as Job;
-    await processor.process(job);
-    // Assert video status updated in DB
-  });
+it('should throw UnrecoverableError with MEDIA_INVALID for invalid.mp4', async () => {
+  const video = await arrangeVideo('invalid.mp4'); // original uploaded to MinIO, status processing
+
+  const promise = processor.process({ data: { videoId: video.id } } as Job);
+
+  await expect(promise).rejects.toBeInstanceOf(UnrecoverableError);
+  await expect(promise).rejects.toThrow(/^MEDIA_INVALID: /);
+});
+
+it('should not mark the video failed on an intermediate transient attempt', async () => {
+  await processor.onFailed(
+    { attemptsMade: 1, opts: { attempts: 3 }, data: { videoId } } as Job,
+    new Error('storage down'),
+  );
+  expect(videoRepository.update).not.toHaveBeenCalled();
 });
 ```
+
+See `references/external-systems.md` → "Message Queue — Real (Docker)" for queue isolation and "FFmpeg — binário real + fixtures" for media fixtures.
 
 ---
 

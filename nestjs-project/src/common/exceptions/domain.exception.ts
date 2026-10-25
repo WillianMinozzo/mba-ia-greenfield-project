@@ -48,3 +48,45 @@ export class TokenReuseDetectedException extends DomainException {
     );
   }
 }
+
+export class VideoNotFoundException extends DomainException {
+  constructor() {
+    super('VIDEO_NOT_FOUND', 404, 'Video not found');
+  }
+}
+
+export class InvalidPartNumberException extends DomainException {
+  constructor(partCount: number) {
+    super(
+      'INVALID_PART_NUMBER',
+      400,
+      `Part numbers must be between 1 and ${partCount}`,
+    );
+  }
+}
+
+export class UploadNotInProgressException extends DomainException {
+  constructor() {
+    super('UPLOAD_NOT_IN_PROGRESS', 409, 'Video is not awaiting an upload');
+  }
+}
+
+export class UploadIncompleteException extends DomainException {
+  constructor(received: number, expected: number) {
+    super(
+      'UPLOAD_INCOMPLETE',
+      409,
+      `Upload has ${received} of ${expected} parts`,
+    );
+  }
+}
+
+export class UploadSizeMismatchException extends DomainException {
+  constructor(actual: number, declared: number) {
+    super(
+      'UPLOAD_SIZE_MISMATCH',
+      409,
+      `Uploaded object has ${actual} bytes but ${declared} were declared`,
+    );
+  }
+}

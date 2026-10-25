@@ -12,18 +12,18 @@ This is a monorepo with two main areas:
 
 - `nestjs-project/` — Backend API (NestJS 11, TypeScript, Express). Contains modules for users, channels, videos, comments, etc.
 - `docs/` — Project documentation, architecture diagrams, and planning.
-- `next-frontend/` (Next.js) — not yet initialized
+- `next-frontend/` — Frontend (Next.js 16, App Router, BFF). Covers Phases 01–02; no video UI yet (Phase 03 is backend-only).
 
 ## Architecture (C4 Container Diagram)
 
 See `docs/diagrams/software-arch.mermaid` for the full diagram. Key containers:
 
-- **Frontend** (Next.js) → calls API via REST, streams from Object Storage
-- **API** (Nest.js) → business rules, auth, reads/writes DB, uploads to storage, publishes jobs to queue, sends emails
-- **Video Worker** (FFmpeg) → consumes jobs from queue, processes videos, updates DB and storage
+- **Frontend** (Next.js) → calls API via REST; uploads video parts and streams media **directly** from Object Storage through presigned URLs
+- **API** (Nest.js) → business rules, auth, reads/writes DB, signs storage URLs and completes multipart uploads (video bytes never pass through the API), publishes jobs to queue, sends emails
+- **Video Worker** (Node.js + FFmpeg) → Compose service `video-worker`, same codebase as `nestjs-project` (entrypoint `src/worker.main.ts`, no HTTP); consumes `process-video` jobs, extracts metadata with `ffprobe`, generates the thumbnail with `ffmpeg`, updates DB and storage
 - **Database** (PostgreSQL) → users, channels, videos, comments, likes
-- **Object Storage** (S3/MinIO) → video files and thumbnails
-- **Message Queue** (TBD) → video processing job queue
+- **Object Storage** (S3-compatible; MinIO `pgsty/minio` pinned by tag + digest in local dev) → private bucket with video originals and thumbnails
+- **Message Queue** (BullMQ + Redis) → `video-processing` queue; Redis runs only on the internal Compose network (host `redis`, port not published)
 - **Email Service** (SMTP) → account confirmation and password recovery
 
 ## Docker Networking
@@ -36,6 +36,8 @@ Inside a container, `localhost` refers to the container itself, not the host mac
 - **Wrong:** `DB_HOST=localhost`
 
 This applies to all environment variables, configuration files, and code that references service hosts.
+
+**Documented exception — browser-facing presigned URLs:** `S3_PUBLIC_ENDPOINT` (default `http://localhost:9000`) is the host the **browser** uses to reach MinIO, so it intentionally points to the host machine. It is used only to *sign* URLs handed to clients — signing is a local computation and never opens a connection. All real storage calls from containers use `S3_ENDPOINT=http://minio:9000` (the service name). Tests that follow a signed URL from inside a container override `S3_PUBLIC_ENDPOINT=http://minio:9000`, because SigV4 signs the `Host` header.
 
 ## Working Principles
 

@@ -17,6 +17,7 @@ import {
   TokenReuseDetectedException,
 } from '../common/exceptions/domain.exception';
 import { MailModule } from '../mail/mail.module';
+import { MailService } from '../mail/mail.service';
 import { Channel } from '../channels/entities/channel.entity';
 import { User } from '../users/entities/user.entity';
 import { UsersModule } from '../users/users.module';
@@ -31,8 +32,9 @@ import {
   VerificationToken,
   VerificationTokenType,
 } from './entities/verification-token.entity';
+import { Video } from '../videos/entities/video.entity';
 
-const ALL_ENTITIES = [User, Channel, RefreshToken, VerificationToken];
+const ALL_ENTITIES = [User, Channel, RefreshToken, VerificationToken, Video];
 
 async function createAuthTestModule(): Promise<TestingModule> {
   const ds = createTestDataSource(ALL_ENTITIES);
@@ -63,14 +65,14 @@ async function createAuthTestModule(): Promise<TestingModule> {
   }).compile();
 }
 
-function captureConfirmationToken(authService: AuthService): Promise<string> {
+function captureConfirmationToken(): Promise<string> {
   return new Promise((resolve) => {
-    const mailServiceInstance = (authService as any).mailService;
     jest
-      .spyOn(mailServiceInstance, 'sendConfirmationEmail')
-      .mockImplementationOnce(async (_e: string, _n: string, t: string) =>
-        resolve(t),
-      );
+      .spyOn(MailService.prototype, 'sendConfirmationEmail')
+      .mockImplementationOnce((_e: string, _n: string, t: string) => {
+        resolve(t);
+        return Promise.resolve();
+      });
   });
 }
 
@@ -79,7 +81,7 @@ async function registerConfirmAndLogin(
   email: string,
   password: string,
 ): Promise<{ userId: string; refreshToken: string }> {
-  const capturePromise = captureConfirmationToken(authService);
+  const capturePromise = captureConfirmationToken();
   const { id: userId } = await authService.register({ email, password });
   const confirmToken = await capturePromise;
   await authService.confirm(confirmToken);
@@ -162,7 +164,7 @@ describe('AuthService — register (integration)', () => {
   });
 
   it('confirmation token hash matches sha256 of raw token delivered by mail service', async () => {
-    const capturePromise = captureConfirmationToken(authService);
+    const capturePromise = captureConfirmationToken();
     const result = await authService.register({
       email: 'verify@example.com',
       password: 'password123',
@@ -205,7 +207,7 @@ describe('AuthService — confirm (integration)', () => {
   });
 
   it('sets is_confirmed = true and used_at on valid token', async () => {
-    const capturePromise = captureConfirmationToken(authService);
+    const capturePromise = captureConfirmationToken();
     const { id: userId } = await authService.register({
       email: 'confirm@example.com',
       password: 'password123',
@@ -230,8 +232,8 @@ describe('AuthService — confirm (integration)', () => {
   });
 
   it('throws TokenExpiredException for an expired token', async () => {
-    const capturePromise = captureConfirmationToken(authService);
-    const { id: userId } = await authService.register({
+    const capturePromise = captureConfirmationToken();
+    await authService.register({
       email: 'expired@example.com',
       password: 'password123',
     });
@@ -331,7 +333,7 @@ describe('AuthService — login (integration)', () => {
     email: string,
     password: string,
   ): Promise<string> {
-    const capturePromise = captureConfirmationToken(authService);
+    const capturePromise = captureConfirmationToken();
     const { id } = await authService.register({ email, password });
     const capturedToken = await capturePromise;
     await authService.confirm(capturedToken);
@@ -560,14 +562,14 @@ describe('AuthService — logout (integration)', () => {
   });
 });
 
-function capturePasswordResetToken(authService: AuthService): Promise<string> {
+function capturePasswordResetToken(): Promise<string> {
   return new Promise((resolve) => {
-    const mailServiceInstance = (authService as any).mailService;
     jest
-      .spyOn(mailServiceInstance, 'sendPasswordResetEmail')
-      .mockImplementationOnce(async (_e: string, _n: string, t: string) =>
-        resolve(t),
-      );
+      .spyOn(MailService.prototype, 'sendPasswordResetEmail')
+      .mockImplementationOnce((_e: string, _n: string, t: string) => {
+        resolve(t);
+        return Promise.resolve();
+      });
   });
 }
 
@@ -593,7 +595,7 @@ describe('AuthService — forgotPassword (integration)', () => {
   });
 
   it('persists a password reset token and sends an email containing the raw token', async () => {
-    const capturePromise = capturePasswordResetToken(authService);
+    const capturePromise = capturePasswordResetToken();
     const { id: userId } = await authService.register({
       email: 'forgot@example.com',
       password: 'password123',
@@ -616,7 +618,7 @@ describe('AuthService — forgotPassword (integration)', () => {
   });
 
   it('invalidates previously issued unused reset tokens', async () => {
-    const capturePromise1 = capturePasswordResetToken(authService);
+    const capturePromise1 = capturePasswordResetToken();
     const { id: userId } = await authService.register({
       email: 'reissue@example.com',
       password: 'password123',
@@ -628,7 +630,7 @@ describe('AuthService — forgotPassword (integration)', () => {
       .update(firstRawToken)
       .digest('hex');
 
-    const capturePromise2 = capturePasswordResetToken(authService);
+    const capturePromise2 = capturePasswordResetToken();
     await authService.forgotPassword('reissue@example.com');
     await capturePromise2;
 
@@ -686,7 +688,7 @@ describe('AuthService — resetPassword (integration)', () => {
       email,
       password,
     );
-    const capturePromise = capturePasswordResetToken(authService);
+    const capturePromise = capturePasswordResetToken();
     await authService.forgotPassword(email);
     const resetToken = await capturePromise;
     return { userId, resetToken };

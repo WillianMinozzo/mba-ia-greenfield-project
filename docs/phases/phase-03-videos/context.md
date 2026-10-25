@@ -3,7 +3,7 @@ kind: phase
 name: phase-03-videos
 sources_mtime:
   docs/project-plan.md: "2026-10-10T12:23:06-03:00"
-  docs/decisions/technical-decisions-phase-03-videos.md: "2026-10-24T21:40:19-03:00"
+  docs/decisions/technical-decisions-phase-03-videos.md: "2026-10-25T01:13:33-03:00"
   docs/decisions/technical-decisions-openapi-docs-nestjs.md: "2026-10-10T12:23:06-03:00"
   docs/phases/phase-01-configuracao-base/context.md: "2026-10-10T12:23:06-03:00"
   docs/phases/phase-02-auth/context.md: "2026-10-10T12:23:06-03:00"
@@ -48,18 +48,19 @@ sources_mtime:
 
 | Ref | Source | Scope | Topic | Status | Decision | Libraries |
 |-----|--------|-------|-------|--------|----------|-----------|
-| phase-03-videos/TD-01 | phase | Backend | Tecnologia de Fila | pending | — | — |
-| phase-03-videos/TD-02 | phase | Cross-layer | Estratégia de Upload de até 10GB (Contrato de Upload Direto…) | pending | — | — |
-| phase-03-videos/TD-03 | phase | Backend | Organização do Storage (Buckets, Chaves e Política de Acesso) | pending | — | — |
-| phase-03-videos/TD-04 | phase | Repo-wide | Origem da Imagem MinIO no Docker Compose | pending | — | — |
-| phase-03-videos/TD-05 | phase | Cross-layer | Endpoint Interno vs Público para Assinar URLs | pending | — | — |
-| phase-03-videos/TD-06 | phase | Cross-layer | Pré-cadastro do Vídeo e Ciclo de Status | pending | — | — |
-| phase-03-videos/TD-07 | phase | Backend | Gatilho do Processamento após o Upload | pending | — | — |
-| phase-03-videos/TD-08 | phase | Backend | Retries e Tratamento de Falha no Processamento | pending | — | — |
-| phase-03-videos/TD-09 | phase | Cross-layer | Estratégia de URL Única e Curta por Vídeo | pending | — | — |
-| phase-03-videos/TD-10 | phase | Cross-layer | Streaming (Range / 206 Partial Content) e Download | pending | — | — |
-| phase-03-videos/TD-11 | phase | Backend | Execução do Worker (Processo/Container) e Invocação do FFmpeg | pending | — | — |
-| phase-03-videos/TD-12 | phase | Backend | Estratégia de Testes para Storage, Fila e FFmpeg | pending | — | — |
+| phase-03-videos/TD-01 | phase | Backend | Tecnologia de Fila | decided | A (BullMQ + Redis via `@nestjs/bullmq`; serviço `redis` sem porta publicada no host) | bullmq, @nestjs/bullmq |
+| phase-03-videos/TD-02 | phase | Cross-layer | Estratégia de Upload de até 10GB (Contrato de Upload Direto…) | decided | A (S3 multipart com URL pré-assinada por parte, partes de 64MiB; Uppy só no cliente futuro, não instalado na Fase 03) | @aws-sdk/client-s3, @aws-sdk/s3-request-presigner |
+| phase-03-videos/TD-03 | phase | Backend | Organização do Storage (Buckets, Chaves e Política de Acesso) | decided | A (um bucket privado, chaves `videos/{videoId}/original` e `videos/{videoId}/thumbnail.jpg`) | @aws-sdk/client-s3 |
+| phase-03-videos/TD-04 | phase | Repo-wide | Origem da Imagem MinIO no Docker Compose | decided | A (`pgsty/minio` com tag `RELEASE.*` fixada) | — |
+| phase-03-videos/TD-05 | phase | Cross-layer | Endpoint Interno vs Público para Assinar URLs | decided | A (`S3_ENDPOINT` interno para operações + `S3_PUBLIC_ENDPOINT` só para assinatura) | @aws-sdk/client-s3, @aws-sdk/s3-request-presigner |
+| phase-03-videos/TD-06 | phase | Cross-layer | Pré-cadastro do Vídeo e Ciclo de Status | decided | B (eixos ortogonais `processingStatus` + `publicationStatus = draft`) | — |
+| phase-03-videos/TD-07 | phase | Backend | Gatilho do Processamento após o Upload | decided | A (API completa o multipart e enfileira com `jobId = videoId` + reconciliador) | @aws-sdk/client-s3, bullmq |
+| phase-03-videos/TD-08 | phase | Backend | Retries e Tratamento de Falha no Processamento | decided | B (transitória com 3× backoff exponencial vs permanente com `UnrecoverableError`) | bullmq |
+| phase-03-videos/TD-09 | phase | Cross-layer | Estratégia de URL Única e Curta por Vídeo | decided | B (id público aleatório de 11 caracteres base64url, `UNIQUE` + retry) | — |
+| phase-03-videos/TD-10 | phase | Cross-layer | Streaming (Range / 206 Partial Content) e Download | decided | A (GET pré-assinado direto ao storage para stream e download; só para o dono autenticado na Fase 03) | @aws-sdk/s3-request-presigner |
+| phase-03-videos/TD-11 | phase | Backend | Execução do Worker (Processo/Container) e Invocação do FFmpeg | decided | A (mesmo código-base, entrypoint e container `video-worker` separados; `spawn` de ffprobe/ffmpeg; FFmpeg no `Dockerfile.dev` compartilhado) | — |
+|     └─ Last revision: 2026-10-25 — Fixa o conjunto de metadados extraídos pelo ffprobe e persistidos no vídeo (AMB-1) | | | | | | |
+| phase-03-videos/TD-12 | phase | Backend | Estratégia de Testes para Storage, Fila e FFmpeg | decided | B (MinIO, Redis e FFmpeg reais via Compose, isolamento por bucket/prefixo de fila) | — |
 
 _Source files:_
 
@@ -81,7 +82,68 @@ _Source files:_
 
 ## Decisions Detail
 
-_No decided TDs yet._
+### phase-03-videos/TD-01
+
+**Recommendation:** é a única opção com integração oficial NestJS *e* semântica de job queue pronta (retry exponencial, stalled jobs, `UnrecoverableError`, `jobId` idempotente), bate com o container separado do diagrama e com o testing guide atual; o custo é um container Redis (`redis:8-alpine`, ou `valkey/valkey` se a licença incomodar). **Compose:** o serviço `redis` **não publica a porta 6379 no host** (sem `ports:`), fica acessível só pela rede interna do Compose (host `redis`). Isso evita conflito com outros Redis locais, e API, worker e testes, que rodam em containers, não precisam da porta no host. pg-boss é a alternativa honesta: troca a integração oficial e o broker dedicado pela garantia transacional — se o time valorizar mais "zero infra nova" do que a integração NestJS, B é defensável. Ganha-se maturidade de ferramenta; perde-se atomicidade DB+fila, compensada em TD-07.
+**Libraries:** bullmq, @nestjs/bullmq
+
+### phase-03-videos/TD-02
+
+**Recommendation:** atende 10GB sem passar bytes pela API nem pelo BFF, contorna o limite de 5GB e retoma por parte usando só a API S3 que o projeto já assume. O Uppy evita reescrever concorrência/retry, e o contrato de backend é idêntico ao da Option B, então trocar o cliente depois é barato. **Escopo da Fase 03:** o Uppy é a recomendação para o cliente *futuro* e **não é instalado agora**. Nesta fase só o lado backend do contrato é entregue (endpoints de iniciar / assinar partes / listar partes / completar / abortar), e os testes e2e simulam o navegador: pedem as URLs assinadas das partes e fazem `PUT` HTTP direto nelas (lendo o `ETag` da resposta), antes de chamar o `complete`. Parâmetros sugeridos: partes fixas de **64MiB** (10GB ≈ 160 partes, bem abaixo de 10.000); validar `size ≤ 10GB` e `content-type video/*` na criação; `uploadId` persistido no vídeo. Dependências: TD-05 (endpoint usado para assinar) e TD-07 (quem completa).
+**Libraries:** @aws-sdk/client-s3, @aws-sdk/s3-request-presigner
+
+### phase-03-videos/TD-03
+
+**Recommendation:** é a mais simples e a única sem risco de vazamento para rascunho/unlisted (Fase 04). O custo de assinar thumbnails é só HMAC local. Se o cache de thumbnail virar problema medido (Fase 06, listagens), adicionar um prefixo público é uma evolução isolada. Bucket criado de forma idempotente no boot/test setup via SDK (`CreateBucket` tolerando "already owned"), sem depender da imagem `mc`.
+**Libraries:** @aws-sdk/client-s3
+
+### phase-03-videos/TD-04
+
+**Recommendation:** é a única opção hoje que junta disponibilidade, versão fixável e correções contínuas. O uso é só local/testes (produção aponta para S3 real ou outro serviço S3-compatível via env), então a falta de SLA é aceitável. Fallback documentado: Option B se o fork parar. Vale registrar a digest no compose para blindar contra retag.
+**Libraries:** —
+
+### phase-03-videos/TD-05
+
+**Recommendation:** é o único arranjo que cumpre ao mesmo tempo a regra Docker do CLAUDE.md, o "sem bytes pela API/BFF" de TD-02 e a portabilidade entre SOs, ao custo de uma variável extra. Chaves de env propostas (contrato Joi + `.env.example` + compose): `S3_ENDPOINT`, `S3_PUBLIC_ENDPOINT`, `S3_REGION`, `S3_ACCESS_KEY_ID`, `S3_SECRET_ACCESS_KEY`, `S3_BUCKET`, `S3_FORCE_PATH_STYLE=true` (obrigatório no MinIO). CORS do MinIO restrito à origem do frontend (`http://localhost:3001`) e expondo `ETag`.
+**Libraries:** @aws-sdk/client-s3, @aws-sdk/s3-request-presigner
+
+### phase-03-videos/TD-06
+
+**Recommendation:** separa "o arquivo está pronto?" de "o dono publicou?", que são decisões de fases diferentes, e evita migração de enum na Fase 04. Política de falha: `failed` é terminal para o pipeline automático (ver TD-08 para retries), guarda o motivo e o vídeo continua editável/excluível. **Uploads abandonados na Fase 03:** a limpeza se limita às partes órfãs de multipart incompleto, feita pelo próprio storage. Em S3 isso é uma regra de lifecycle do bucket `AbortIncompleteMultipartUpload` (ex.: `DaysAfterInitiation: 1`). **No MinIO essa regra não é aceita:** testado em 2026-10-24 com `pgsty/minio:RELEASE.2026-08-04T00-00-00Z`, `mc ilm import` rejeita `AbortIncompleteMultipartUpload` ("XML … did not validate against our published schema"), enquanto uma regra `Expiration` de controle, no mesmo formato, é aceita. O equivalente no MinIO é a config de servidor `stale_uploads_expiry` (default `24h`, varredura a cada `6h`, ajustável via `MINIO_API_STALE_UPLOADS_EXPIRY`), que já vem ativa sem configuração. Um job de limpeza de vídeos presos em `awaiting_upload` (linhas no banco) **fica fora do escopo da Fase 03**. Valores de enum são parte do contrato OpenAPI consumido pelo frontend (codegen `next-frontend-openapi-typing/TD-01`).
+**Libraries:** —
+
+### phase-03-videos/TD-07
+
+**Recommendation:** mantém credenciais e validação no servidor, é portátil entre MinIO e S3 sem configurar eventos de storage, e o BullMQ dedup por `jobId = videoId` deixa o `complete` idempotente (retomada ou duplo clique não geram dois jobs). A janela "status mudou mas job não entrou" (falta de transação DB+Redis) fecha com: enfileirar *depois* do commit e um reconciliador leve (no boot do worker ou periódico) que re-enfileira vídeos `processing` sem job ativo. Se a escolha em TD-01 for pg-boss, o enqueue vai na mesma transação e o reconciliador deixa de ser necessário.
+**Libraries:** @aws-sdk/client-s3, bullmq
+
+### phase-03-videos/TD-08
+
+**Recommendation:** é o mínimo que dá feedback correto e rápido usando `UnrecoverableError` + `attempts/backoff` do BullMQ, sem custo de produto extra. O arquivo original **não é apagado** em falha (permite diagnóstico e reprocessamento futuro). O reprocessamento manual (C) fica como candidato a tarefa da Fase 04, junto do painel.
+**Libraries:** bullmq
+
+### phase-03-videos/TD-09
+
+**Recommendation:** é a única curta *e* não enumerável, requisito implícito do unlisted da Fase 04. Gerado no pré-cadastro (TD-06), então a URL existe desde o início do upload. Preferir `crypto.randomBytes` nativo em vez de `nanoid`: o `nanoid` atual é ESM-only, e o backend é CommonJS (ts-jest), o que evita atrito de módulo.
+**Libraries:** —
+
+### phase-03-videos/TD-10
+
+**Recommendation:** entrega Range/206 nativo sem código e sem tráfego de mídia na API, mantém a autorização na API e é idêntico em produção. Streaming adaptativo (HLS/DASH) **não** é requisito da fase (o plano pede só reprodução sem download completo e extração de metadados), então fica como evolução futura. Os campos `streamUrl`/`downloadUrl` só são emitidos com `processingStatus = ready`. **Regra de autorização da Fase 03:** todo vídeo ainda é rascunho, então `streamUrl` e `downloadUrl` só são emitidos para o **dono do canal autenticado**. Qualquer outro solicitante (anônimo ou outro usuário) não recebe as URLs. Acesso anônimo, público e unlisted fica para as Fases 04/05, quando existirem publicação e visibilidade.
+**Libraries:** @aws-sdk/s3-request-presigner
+
+### phase-03-videos/TD-11
+
+**Recommendation:** cumpre a separação do diagrama sem duplicar o domínio, evita uma dependência abandonada e mantém o FFmpeg na imagem (mesmo binário em dev, testes e produção). Ler o original por URL interna evita copiar 10GB para o disco do worker. Frame da thumbnail em ~10% da duração (mínimo 1s, limitado à duração) evita telas pretas de abertura. **Imagem decidida:** o FFmpeg (`ffmpeg` + `ffprobe`) é instalado no `nestjs-project/Dockerfile.dev`, **compartilhado pelos serviços `nestjs-api` e `video-worker`**. Os dois serviços usam a mesma imagem e diferem só no comando/entrypoint, o que permite rodar os testes de integração do processor dentro do container `nestjs-api` (ver TD-12).
+**Libraries:** —
+
+**Revisions:**
+- 2026-10-25 — Fixa o conjunto de metadados extraídos pelo ffprobe e persistidos no vídeo: `durationSeconds`, `width`, `height`, `videoCodec`, `audioCodec` (nullable), `formatName`, `bitrate`, `frameRate`, `sizeBytes`; a saída JSON bruta do ffprobe é descartada (não persistida). Rationale: resolve AMB-1 de `phase-03-videos` (validation.md) — o conjunto é contrato entre entidade/migration, resposta da API (OpenAPI, consumida pelo painel da Fase 04) e asserções dos testes de integração do processor.
+
+### phase-03-videos/TD-12
+
+**Recommendation:** o filesystem local deixou de testar o que importa assim que o upload virou multipart pré-assinado direto ao storage, e o projeto já segue "serviço real via Compose" para Postgres e e-mail. **FFmpeg nos testes:** como o FFmpeg fica no `Dockerfile.dev` compartilhado por `nestjs-api` e `video-worker` (TD-11), os testes de integração do processor (ffprobe/ffmpeg reais sobre as fixtures) rodam dentro do container `nestjs-api`, como o resto da suíte. **Entregável desta fase:** atualizar `testing-guide-nestjs-project` faz parte da Fase 03: a seção "Object Storage — Local Filesystem" vira "Object Storage — MinIO real (Docker)", a seção de fila passa a usar Redis com host `redis`, e entra uma seção nova para FFmpeg/fixtures. Fica como **tarefa separada** só a correção dos defaults `localhost` antigos nos exemplos já existentes do guia (Postgres, Mailpit), que conflitam com a regra Docker do CLAUDE.md.
+**Libraries:** —
 
 ## Inherited Decisions Detail
 

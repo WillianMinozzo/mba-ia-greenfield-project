@@ -1,51 +1,64 @@
 ---
 kind: phase
 name: phase-03-videos
-status: dirty
-issue_count: 13
+status: clean
+issue_count: 0
 sources_mtime:
-  docs/phases/phase-03-videos/context.md: "2026-10-24T23:24:09-03:00"
-  docs/decisions/technical-decisions-phase-03-videos.md: "2026-10-24T21:40:19-03:00"
+  docs/phases/phase-03-videos/context.md: "2026-10-25T01:15:44-03:00"
+  docs/decisions/technical-decisions-phase-03-videos.md: "2026-10-25T01:13:33-03:00"
 issues:
   - id: AMB-1
-    status: open
+    status: resolved
     summary: "Quais metadados o processamento extrai e persiste além da duração"
+    resolved_by: phase-03-videos/TD-11
   - id: OQ-1
-    status: open
+    status: resolved
     summary: "TD-01 pending — Tecnologia de Fila"
+    resolved_by: phase-03-videos/TD-01
   - id: OQ-2
-    status: open
+    status: resolved
     summary: "TD-02 pending — Estratégia de Upload de até 10GB"
+    resolved_by: phase-03-videos/TD-02
   - id: OQ-3
-    status: open
+    status: resolved
     summary: "TD-03 pending — Organização do Storage (Buckets, Chaves e Acesso)"
+    resolved_by: phase-03-videos/TD-03
   - id: OQ-4
-    status: open
+    status: resolved
     summary: "TD-04 pending — Origem da Imagem MinIO no Docker Compose"
+    resolved_by: phase-03-videos/TD-04
   - id: OQ-5
-    status: open
+    status: resolved
     summary: "TD-05 pending — Endpoint Interno vs Público para Assinar URLs"
+    resolved_by: phase-03-videos/TD-05
   - id: OQ-6
-    status: open
+    status: resolved
     summary: "TD-06 pending — Pré-cadastro do Vídeo e Ciclo de Status"
+    resolved_by: phase-03-videos/TD-06
   - id: OQ-7
-    status: open
+    status: resolved
     summary: "TD-07 pending — Gatilho do Processamento após o Upload"
+    resolved_by: phase-03-videos/TD-07
   - id: OQ-8
-    status: open
+    status: resolved
     summary: "TD-08 pending — Retries e Tratamento de Falha no Processamento"
+    resolved_by: phase-03-videos/TD-08
   - id: OQ-9
-    status: open
+    status: resolved
     summary: "TD-09 pending — Estratégia de URL Única e Curta por Vídeo"
+    resolved_by: phase-03-videos/TD-09
   - id: OQ-10
-    status: open
+    status: resolved
     summary: "TD-10 pending — Streaming (Range / 206) e Download"
+    resolved_by: phase-03-videos/TD-10
   - id: OQ-11
-    status: open
+    status: resolved
     summary: "TD-11 pending — Execução do Worker e Invocação do FFmpeg"
+    resolved_by: phase-03-videos/TD-11
   - id: OQ-12
-    status: open
+    status: resolved
     summary: "TD-12 pending — Estratégia de Testes para Storage, Fila e FFmpeg"
+    resolved_by: phase-03-videos/TD-12
 advisories: []
 ---
 
@@ -59,7 +72,7 @@ _None._
 
 ### Ambiguities
 
-- **AMB-1** — A capability "Processamento automático do vídeo após upload (extração de duração e metadados)" nomeia só a duração. "Metadados" não está definido em `## Scope` nem em nenhum TD: `phase-03-videos/TD-11` define *como* extrair (ffprobe JSON), não *quais* campos são persistidos. O conjunto de campos é um contrato: vira colunas da entidade `Video` (migration), campos da resposta da API (OpenAPI, consumido na Fase 04 pelo painel "thumbnail, título, …, status") e asserções dos testes de integração do processor. Explicit choice: definir o conjunto mínimo persistido. Candidatos: `durationSeconds`, `width`, `height`, `videoCodec`, `audioCodec`, `container/formatName`, `bitrate`, `sizeBytes`, `frameRate`. Também decidir se o JSON bruto do ffprobe é guardado (ex.: coluna `jsonb`) ou descartado. Registrar como revisão de `phase-03-videos/TD-11` ou de `phase-03-videos/TD-06` via `/plan-resolve 03`.
+_None._
 
 ### Missing Decisions
 
@@ -75,18 +88,7 @@ _None._
 
 ### Unresolved Open Questions
 
-- **OQ-1** — TD-01 pending — Tecnologia de Fila. Resolution: fill the **Decision:** field of TD-01 in `docs/decisions/technical-decisions-phase-03-videos.md`, then re-run /plan-validate 03.
-- **OQ-2** — TD-02 pending — Estratégia de Upload de até 10GB (Contrato de Upload Direto ao Storage). Resolution: fill the **Decision:** field of TD-02 in `docs/decisions/technical-decisions-phase-03-videos.md`, then re-run /plan-validate 03.
-- **OQ-3** — TD-03 pending — Organização do Storage (Buckets, Chaves e Política de Acesso). Resolution: fill the **Decision:** field of TD-03 in `docs/decisions/technical-decisions-phase-03-videos.md`, then re-run /plan-validate 03.
-- **OQ-4** — TD-04 pending — Origem da Imagem MinIO no Docker Compose. Resolution: fill the **Decision:** field of TD-04 in `docs/decisions/technical-decisions-phase-03-videos.md`, then re-run /plan-validate 03.
-- **OQ-5** — TD-05 pending — Endpoint Interno vs Público para Assinar URLs. Resolution: fill the **Decision:** field of TD-05 in `docs/decisions/technical-decisions-phase-03-videos.md`, then re-run /plan-validate 03.
-- **OQ-6** — TD-06 pending — Pré-cadastro do Vídeo e Ciclo de Status. Resolution: fill the **Decision:** field of TD-06 in `docs/decisions/technical-decisions-phase-03-videos.md`, then re-run /plan-validate 03.
-- **OQ-7** — TD-07 pending — Gatilho do Processamento após o Upload. Resolution: fill the **Decision:** field of TD-07 in `docs/decisions/technical-decisions-phase-03-videos.md`, then re-run /plan-validate 03.
-- **OQ-8** — TD-08 pending — Retries e Tratamento de Falha no Processamento. Resolution: fill the **Decision:** field of TD-08 in `docs/decisions/technical-decisions-phase-03-videos.md`, then re-run /plan-validate 03.
-- **OQ-9** — TD-09 pending — Estratégia de URL Única e Curta por Vídeo. Resolution: fill the **Decision:** field of TD-09 in `docs/decisions/technical-decisions-phase-03-videos.md`, then re-run /plan-validate 03.
-- **OQ-10** — TD-10 pending — Streaming (Range / 206 Partial Content) e Download. Resolution: fill the **Decision:** field of TD-10 in `docs/decisions/technical-decisions-phase-03-videos.md`, then re-run /plan-validate 03.
-- **OQ-11** — TD-11 pending — Execução do Worker (Processo/Container) e Invocação do FFmpeg. Resolution: fill the **Decision:** field of TD-11 in `docs/decisions/technical-decisions-phase-03-videos.md`, then re-run /plan-validate 03.
-- **OQ-12** — TD-12 pending — Estratégia de Testes para Storage, Fila e FFmpeg. Resolution: fill the **Decision:** field of TD-12 in `docs/decisions/technical-decisions-phase-03-videos.md`, then re-run /plan-validate 03. _Nota:_ `## Testing Requirements` em `context.md` reproduz a linha atual do testing guide ("Service with side-effect dep (email, storage) → … or local adapter"). Se TD-12 for decidido como Option B (MinIO real), essa linha passa a divergir da decisão até o testing guide ser atualizado (entregável desta fase, segundo a recomendação de TD-12).
+_None._
 
 ### UI Coverage Gaps
 
@@ -94,4 +96,16 @@ _None._ _(Phase has no UI scope — `## UI Inventory` absent; check not applicab
 
 ## Resolved Issues
 
-_No issues resolved yet._
+- **AMB-1** _(resolved_by phase-03-videos/TD-11)_ — Quais metadados o processamento extrai e persiste além da duração. Revisão 2026-10-25 em TD-11: `durationSeconds`, `width`, `height`, `videoCodec`, `audioCodec` (nullable), `formatName`, `bitrate`, `frameRate`, `sizeBytes`; JSON bruto do ffprobe descartado.
+- **OQ-1** _(resolved_by phase-03-videos/TD-01)_ — TD-01 pending — Tecnologia de Fila. Decidido: A (BullMQ + Redis).
+- **OQ-2** _(resolved_by phase-03-videos/TD-02)_ — TD-02 pending — Estratégia de Upload de até 10GB. Decidido: A (S3 multipart pré-assinado por parte; Uppy só no cliente futuro).
+- **OQ-3** _(resolved_by phase-03-videos/TD-03)_ — TD-03 pending — Organização do Storage. Decidido: A (um bucket privado).
+- **OQ-4** _(resolved_by phase-03-videos/TD-04)_ — TD-04 pending — Origem da Imagem MinIO. Decidido: A (`pgsty/minio` fixado).
+- **OQ-5** _(resolved_by phase-03-videos/TD-05)_ — TD-05 pending — Endpoint Interno vs Público. Decidido: A (interno + público só para assinatura).
+- **OQ-6** _(resolved_by phase-03-videos/TD-06)_ — TD-06 pending — Pré-cadastro e Ciclo de Status. Decidido: B (eixos ortogonais).
+- **OQ-7** _(resolved_by phase-03-videos/TD-07)_ — TD-07 pending — Gatilho do Processamento. Decidido: A (API completa e enfileira).
+- **OQ-8** _(resolved_by phase-03-videos/TD-08)_ — TD-08 pending — Retries e Falha. Decidido: B (transitória vs permanente).
+- **OQ-9** _(resolved_by phase-03-videos/TD-09)_ — TD-09 pending — URL Única e Curta. Decidido: B (id público aleatório de 11 caracteres).
+- **OQ-10** _(resolved_by phase-03-videos/TD-10)_ — TD-10 pending — Streaming e Download. Decidido: A (GET pré-assinado direto ao storage).
+- **OQ-11** _(resolved_by phase-03-videos/TD-11)_ — TD-11 pending — Worker e FFmpeg. Decidido: A (mesmo código-base, container separado).
+- **OQ-12** _(resolved_by phase-03-videos/TD-12)_ — TD-12 pending — Estratégia de Testes. Decidido: B (serviços reais via Compose).
